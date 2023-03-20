@@ -51,6 +51,9 @@ sub main(){
 			elsif($within_tags eq 'la'){
 				print $ofh (LT_LAN_MARK . $line);
 			}
+			elsif($within_tags =~ m/^VAR\./){
+				print $ofh (VAR_MARK . $line);
+			}
 			elsif($within_tags =~ m/^SIN\./){
 				print $ofh (SIN_MARK . $line);
 			}
