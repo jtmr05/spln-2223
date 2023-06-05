@@ -24,11 +24,11 @@ def main():
     )
 
     parser.add_argument(
-        '--lang', '-l',
+        '--language', '-l',
         help="Define the audio language",
         default=None, required=False
     )
-    parser.add_argument('--task', '-t', help="Define the task", default=None, required=False)
+    #parser.add_argument('--task', '-t', help="Define the task", default=None, required=False)
     parser.add_argument('filename')
 
     args: dict[str, str] = vars(parser.parse_args())
