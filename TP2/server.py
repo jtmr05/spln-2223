@@ -1,82 +1,120 @@
 #!/usr/bin/env python3
 
-import whisper
-import threading
-import socket
+import numpy as np
 import pickle
+import socket
+import threading
+import typing
+import whisper
 
-MODEL: str = 'small'
-PORT: int = 9000
-BUFFER_SIZE: int = 4096
+import utils as ut
+from config import *
 
+Socket = socket.socket
+Address = tuple[str, int]  # a hostname/port pair
 
-def as_bytes(s: str) -> bytes:
-    return s.encode('utf-8')
-
-
-def from_bytes(b: bytes) -> str:
-    return b.decode('utf-8')
+FILE_PATH: str = '/tmp/whisper_server.tmp'
+TIMEOUT: float = 3.0
 
 
 class WhisperServer:
 
     _model: whisper.Whisper
-    _queue: list[dict]
+    _queue: list[tuple[Socket, Address]]
     _queue_lock: threading.Condition
-    _requests_socket: socket.socket
-    _responses_socket: socket.socket
+    _socket: Socket
 
     def __init__(self):
         self._model = whisper.load_model(MODEL)
         self._queue = list()
         self._queue_lock = threading.Condition()
-        self._requests_socket = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
-        self._requests_socket.bind(('', PORT))
-        self._responses_socket = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
+        self._socket = Socket(socket.AF_INET, socket.SOCK_STREAM)
+        self._socket.bind((HOSTNAME, SERVER_PORT))
+        self._socket.listen()
 
     def __enter__(self):
         return self
 
-    def __exit__(self, exc_type, exc_value, traceback):
+    def __exit__(self, *args):
         try:
-            self._requests_socket.close()
-            self._responses_socket.close()
+            self._socket.close()
         finally:
             pass
 
     def _listen(self):
 
-        print(f"Server listening on port {PORT}")
+        prefix: str = ut.annotate('::', 1, 34)
 
+        print(f"{prefix} server listening for requests on port {ut.annotate(SERVER_PORT, 1)}...")
         while True:
-            (content, address) = self._requests_socket.recvfrom(BUFFER_SIZE)
-            content = pickle.loads(content)
+            pair: tuple[Socket, Address] = self._socket.accept()
+            addr_as_str: str = ut.annotate(f"{pair[1][0]}:{pair[1][1]}", 1)
 
-            try:
-                self._queue_lock.acquire()
-                self._queue.append((content, address))
+            print(f"{prefix} received new request from {addr_as_str}")
+
+            with self._queue_lock:
+                self._queue.append(pair)
                 self._queue_lock.notify_all()
-            finally:
-                self._queue_lock.release()
 
     def _handle_requests(self):
+
+        prefix: str = ut.annotate('==>', 1, 32)
+
         while True:
-            try:
-                self._queue_lock.acquire()
+            with self._queue_lock:
                 while len(self._queue) == 0:
+                    print(f"{prefix} waiting for new requests...")
                     self._queue_lock.wait()
-                content, address = self._queue.pop(0)
+
+                pair: tuple[Socket, Address] = self._queue.pop(0)
+                conn, addr = pair
+                addr_as_str: str = ut.annotate(f"{addr[0]}:{addr[1]}", 1)
+
+            print(f"{prefix} handling request for client {addr_as_str}")
+
+            # ping client, informing that it's their turn
+            ut.write_reliably(conn, bytes(BUFFER_SIZE), BUFFER_SIZE)
+
+            print(f"{prefix} reading options from the client now")
+
+            # read the options from the client (file size, language, ...)
+            #options_size_as_bytes: bytes = ut.read_reliably(conn, INT_SIZE)
+            #options_size: int = int.from_bytes(options_size_as_bytes)
+            #print(f"{prefix} options_size == {options_size}")
+            options_as_bytes: bytes = ut.read_reliably(conn, BUFFER_SIZE)
+            options: dict[str, typing.Any] = pickle.loads(options_as_bytes)
+            print(f"{prefix} options: {ut.annotate(options, 1)}")
+            file_size: int = options.pop('file_size')
+
+            conn.settimeout(TIMEOUT)
+
+            try:
+                audio_content: bytes = ut.read_reliably(conn, file_size, True)
+                print(len(audio_content))
+                with open(FILE_PATH, 'wb') as fh:
+                    fh.write(audio_content)
+                    fh.flush()
+
+                print(f"{prefix} file successfully received")
+
+                audio: np.ndarray = whisper.load_audio(FILE_PATH)
+                result: dict[str, typing.Any] = whisper.transcribe(self._model, audio, **options)
+
+                print(f"{prefix} finished transcription; sending result to client")
+                result_as_bytes: bytes = ut.as_bytes(result['text'])
+                result_size: int = len(result_as_bytes)
+                ut.write_reliably(conn, result_size.to_bytes(INT_SIZE), INT_SIZE)
+                ut.write_reliably(conn, result_as_bytes, result_size)
+
+                print(f"{prefix} finalizing request for {addr_as_str}...")
+
+            except TimeoutError:
+                print(f"{prefix} connection timed out; continuing...")
+                continue
+
             finally:
-                self._queue_lock.release()
-
-            print(f"handling request {content['filename']}")
-            audio = whisper.load_audio(content['filename'])
-            content.pop('filename')
-            result = whisper.transcribe(self._model, audio, **content)
-
-            #print(result['text'])
-            self._responses_socket.sendto(pickle.dumps(len(result['text'])), address)
-            self._responses_socket.sendto(as_bytes(result['text']), address)
+                conn.shutdown(socket.SHUT_RDWR)
+                conn.close()
 
     def run(self):
         t1 = threading.Thread(target=self._listen)
