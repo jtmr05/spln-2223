@@ -27,7 +27,7 @@ def annotate(src: typing.Any, *ansi_escape_codes: int) -> str:
     return str_buffer.getvalue()
 
 
-def read_reliably(s: socket.socket, size: int, yes: bool = False) -> bytes:
+def read_reliably(s: socket.socket, size: int) -> bytes:
     buffer: bytearray = bytearray(size)
     view: memoryview = memoryview(buffer)
     i: int = 0
@@ -36,8 +36,6 @@ def read_reliably(s: socket.socket, size: int, yes: bool = False) -> bytes:
         if b_read == 0:
             break
         i += b_read
-        if yes:
-            print(f"@read:: i: {i}, size: {size}")
     return bytes(buffer)
 
 
@@ -45,9 +43,8 @@ def write_reliably(s: socket.socket, buffer: typing.Union[bytearray, bytes], siz
     view: memoryview = memoryview(buffer)
     i: int = 0
     while i < size:
-        b_sent: int = s.send(view[i:], size - i)
+        b_sent: int = s.send(view[i:])
         if b_sent == 0:
             break
         i += b_sent
-        #print(f"@write:: i: {i}, size: {size}")
     return i
