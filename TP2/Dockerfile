@@ -19,6 +19,4 @@ COPY utils.py ./
 
 RUN chmod +x server.py
 
-EXPOSE 8888
-
 CMD ./server.py $WHISPER_MODEL $WHISPER_HOSTNAME $WHISPER_PORT
