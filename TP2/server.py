@@ -1,4 +1,4 @@
-#!/usr/bin/env python3
+#!/usr/bin/env -S python3 -u
 
 import numba.core.errors as numba_errs
 import warnings
@@ -124,6 +124,8 @@ class WhisperServer:
                 if noise_reduction:
                     print(f"{prefix} performing noise reduction")
                     audio = nr.reduce_noise(y=audio, sr=sample_rate)
+                    print(audio)
+                    #np.ndarray(a
 
                 result: dict[str, typing.Any] = whisper.transcribe(self._model, audio, **options)
 

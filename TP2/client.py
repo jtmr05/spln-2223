@@ -85,6 +85,9 @@ def main():
 
         output_fn: str = args.output
         output_fn = output_fn if output_fn is not None else change_file_ext(input_fn, 'txt')
+
+        os.makedirs(os.path.dirname(output_fn), exist_ok=True)
+
         with open(output_fn, 'w') as fh:
             fh.write(result)
             fh.flush()

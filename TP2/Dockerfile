@@ -6,11 +6,13 @@ ENV WHISPER_PORT=8888
 
 WORKDIR /server
 
-# COPY requirements.txt ./
+RUN apt update 
+RUN apt upgrade -y
+RUN apt install ffmpeg -y
 
-# RUN pip install -r requirements.txt
-
-RUN pip install openai-whisper noisereduce
+RUN pip install --upgrade pip
+RUN pip install openai-whisper 
+RUN pip install noisereduce
 
 COPY server.py ./
 COPY utils.py ./
@@ -19,4 +21,4 @@ RUN chmod +x server.py
 
 EXPOSE 8888
 
-CMD [ "./server.py", "$WHISPER_MODEL",, "$WHISPER_HOSTNAME", "$WHISPER_PORT" ]
+CMD ./server.py $WHISPER_MODEL $WHISPER_HOSTNAME $WHISPER_PORT
